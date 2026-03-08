@@ -1,0 +1,63 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: cloudplatform-db
+    environment:
+      POSTGRES_DB: cloudplatform
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d cloudplatform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # API Service
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: cloudplatform-api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: cloudplatform
+      DB_USER: appuser
+      DB_PASSWORD: apppassword
+      CORS_ORIGIN: "*"
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cloudplatform-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
