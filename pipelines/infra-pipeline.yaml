@@ -1,0 +1,115 @@
+# Infrastructure Pipeline - Terraform Plan & Apply
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra/terraform/**
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: cloud-platform-tf-vars  # Contains ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_SUBSCRIPTION_ID, ARM_TENANT_ID
+
+stages:
+  # ----------------------------------------------------------------
+  # Stage 1: Validate Terraform
+  # ----------------------------------------------------------------
+  - stage: Validate
+    displayName: 'Validate Terraform'
+    jobs:
+      - job: Validate
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: 'latest'
+          - script: |
+              cd infra/terraform
+              terraform init -backend=false
+              terraform validate
+              terraform fmt -check -recursive
+            displayName: 'Terraform Validate & Format Check'
+
+  # ----------------------------------------------------------------
+  # Stage 2: Plan Dev
+  # ----------------------------------------------------------------
+  - stage: PlanDev
+    displayName: 'Plan Dev Infrastructure'
+    dependsOn: Validate
+    jobs:
+      - job: Plan
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: 'latest'
+          - script: |
+              cd infra/terraform
+              terraform init
+              terraform plan -var-file=environments/dev.tfvars -var="db_admin_username=$(DB_ADMIN_USER)" -var="db_admin_password=$(DB_ADMIN_PASSWORD)" -out=dev.tfplan
+            displayName: 'Terraform Plan - Dev'
+          - publish: infra/terraform/dev.tfplan
+            artifact: dev-plan
+
+  # ----------------------------------------------------------------
+  # Stage 3: Apply Dev (with approval)
+  # ----------------------------------------------------------------
+  - stage: ApplyDev
+    displayName: 'Apply Dev Infrastructure'
+    dependsOn: PlanDev
+    jobs:
+      - deployment: ApplyDev
+        environment: 'cloud-platform-infra-dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: TerraformInstaller@1
+                  inputs:
+                    terraformVersion: 'latest'
+                - script: |
+                    cd infra/terraform
+                    terraform init
+                    terraform apply -var-file=environments/dev.tfvars -var="db_admin_username=$(DB_ADMIN_USER)" -var="db_admin_password=$(DB_ADMIN_PASSWORD)" -auto-approve
+                  displayName: 'Terraform Apply - Dev'
+
+  # ----------------------------------------------------------------
+  # Stage 4: Plan Prod
+  # ----------------------------------------------------------------
+  - stage: PlanProd
+    displayName: 'Plan Prod Infrastructure'
+    dependsOn: ApplyDev
+    jobs:
+      - job: Plan
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: 'latest'
+          - script: |
+              cd infra/terraform
+              terraform init
+              terraform plan -var-file=environments/prod.tfvars -var="db_admin_username=$(DB_ADMIN_USER)" -var="db_admin_password=$(DB_ADMIN_PASSWORD)" -out=prod.tfplan
+            displayName: 'Terraform Plan - Prod'
+
+  # ----------------------------------------------------------------
+  # Stage 5: Apply Prod (with approval)
+  # ----------------------------------------------------------------
+  - stage: ApplyProd
+    displayName: 'Apply Prod Infrastructure'
+    dependsOn: PlanProd
+    jobs:
+      - deployment: ApplyProd
+        environment: 'cloud-platform-infra-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: TerraformInstaller@1
+                  inputs:
+                    terraformVersion: 'latest'
+                - script: |
+                    cd infra/terraform
+                    terraform init
+                    terraform apply -var-file=environments/prod.tfvars -var="db_admin_username=$(DB_ADMIN_USER)" -var="db_admin_password=$(DB_ADMIN_PASSWORD)" -auto-approve
+                  displayName: 'Terraform Apply - Prod'

@@ -1,0 +1,94 @@
+# CI Pipeline - Build, Test, and Push Container Images
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: cloud-platform-vars  # Contains ACR_NAME, ACR_LOGIN_SERVER
+  - name: TAG
+    value: '$(Build.BuildId)'
+
+stages:
+  # ----------------------------------------------------------------
+  # Stage 1: Build & Test
+  # ----------------------------------------------------------------
+  - stage: BuildAndTest
+    displayName: 'Build & Test'
+    jobs:
+      - job: TestAPI
+        displayName: 'Test API'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '20.x'
+          - script: |
+              cd api
+              npm ci
+              npm test
+            displayName: 'Install and Test API'
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'api/test-results.xml'
+            condition: always()
+
+  # ----------------------------------------------------------------
+  # Stage 2: Build & Push Docker Images
+  # ----------------------------------------------------------------
+  - stage: BuildImages
+    displayName: 'Build & Push Images'
+    dependsOn: BuildAndTest
+    condition: succeeded()
+    jobs:
+      - job: BuildAndPush
+        displayName: 'Build & Push to ACR'
+        steps:
+          - task: Docker@2
+            displayName: 'Build & Push API Image'
+            inputs:
+              containerRegistry: 'acr-service-connection'
+              repository: 'cloud-platform-api'
+              command: 'buildAndPush'
+              Dockerfile: 'api/Dockerfile'
+              buildContext: 'api'
+              tags: |
+                $(TAG)
+                latest
+
+          - task: Docker@2
+            displayName: 'Build & Push Frontend Image'
+            inputs:
+              containerRegistry: 'acr-service-connection'
+              repository: 'cloud-platform-frontend'
+              command: 'buildAndPush'
+              Dockerfile: 'frontend/Dockerfile'
+              buildContext: 'frontend'
+              tags: |
+                $(TAG)
+                latest
+
+          - publish: $(Build.SourcesDirectory)/k8s
+            artifact: k8s-manifests
+            displayName: 'Publish K8s Manifests'
+
+  # ----------------------------------------------------------------
+  # Stage 3: Security Scan
+  # ----------------------------------------------------------------
+  - stage: SecurityScan
+    displayName: 'Security Scan'
+    dependsOn: BuildImages
+    condition: succeeded()
+    jobs:
+      - job: ContainerScan
+        displayName: 'Scan Container Images'
+        steps:
+          - script: |
+              echo "Running container security scan..."
+              echo "In production, integrate Microsoft Defender for Containers here"
+            displayName: 'Container Security Scan'

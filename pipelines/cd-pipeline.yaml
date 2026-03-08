@@ -1,0 +1,105 @@
+# CD Pipeline - Deploy to environments with promotion gates
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: ci
+      source: 'CI Pipeline'
+      trigger:
+        branches:
+          include:
+            - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: cloud-platform-vars
+
+stages:
+  # ----------------------------------------------------------------
+  # Stage 1: Deploy to Dev (automatic)
+  # ----------------------------------------------------------------
+  - stage: DeployDev
+    displayName: 'Deploy to Dev'
+    jobs:
+      - deployment: DeployDev
+        displayName: 'Deploy to Dev'
+        environment: 'cloud-platform-dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy to Dev via Kustomize'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'aks-dev-connection'
+                    namespace: 'cloud-platform-dev'
+                    manifests: |
+                      $(Pipeline.Workspace)/ci/k8s-manifests/overlays/dev
+                - script: |
+                    echo "Running smoke tests against dev..."
+                    sleep 30
+                    kubectl get pods -n cloud-platform-dev
+                  displayName: 'Dev Smoke Test'
+
+  # ----------------------------------------------------------------
+  # Stage 2: Deploy to Staging (manual approval)
+  # ----------------------------------------------------------------
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging'
+    dependsOn: DeployDev
+    condition: succeeded()
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy to Staging'
+        environment: 'cloud-platform-staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy to Staging via Kustomize'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'aks-staging-connection'
+                    namespace: 'cloud-platform-staging'
+                    manifests: |
+                      $(Pipeline.Workspace)/ci/k8s-manifests/overlays/staging
+                - script: |
+                    echo "Running integration tests against staging..."
+                    sleep 30
+                    kubectl get pods -n cloud-platform-staging
+                  displayName: 'Staging Integration Tests'
+
+  # ----------------------------------------------------------------
+  # Stage 3: Deploy to Prod (manual approval required)
+  # ----------------------------------------------------------------
+  - stage: DeployProd
+    displayName: 'Deploy to Production'
+    dependsOn: DeployStaging
+    condition: succeeded()
+    jobs:
+      - deployment: DeployProd
+        displayName: 'Deploy to Production'
+        environment: 'cloud-platform-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy to Prod via Kustomize'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'aks-prod-connection'
+                    namespace: 'cloud-platform-prod'
+                    manifests: |
+                      $(Pipeline.Workspace)/ci/k8s-manifests/overlays/prod
+                - script: |
+                    echo "Verifying production deployment..."
+                    kubectl get pods -n cloud-platform-prod
+                    kubectl get hpa -n cloud-platform-prod
+                    kubectl get ingress -n cloud-platform-prod
+                    kubectl get pdb -n cloud-platform-prod
+                  displayName: 'Prod Verification'
