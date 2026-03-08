@@ -1,0 +1,59 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cloud-platform-dev
+
+namePrefix: dev-
+
+resources:
+  - ../../base
+
+patches:
+  # Scale down for dev
+  - target:
+      kind: Deployment
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 50m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 64Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: 250m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 128Mi
+
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 25m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 32Mi
+
+images:
+  - name: ACR_LOGIN_SERVER/cloud-platform-api
+    newName: acrcloudplatformdev.azurecr.io/cloud-platform-api
+    newTag: dev-latest
+  - name: ACR_LOGIN_SERVER/cloud-platform-frontend
+    newName: acrcloudplatformdev.azurecr.io/cloud-platform-frontend
+    newTag: dev-latest
+
+commonLabels:
+  environment: dev
+
+commonAnnotations:
+  description: "Development environment - Cloud Native Platform"
