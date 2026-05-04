@@ -412,13 +412,15 @@ When you run `terraform apply`, these 14 resources are created:
 | 7 | AKS → KV Role Assignment | — | `Key Vault Secrets User` for CSI driver |
 | 8 | Deployer → KV Role Assignment | — | `Key Vault Administrator` for Terraform |
 | 9 | Key Vault Secret | `db-password` | PostgreSQL admin password |
-| 10 | Key Vault Secret | `db-connection-string` | Full PostgreSQL connection URI |
-| 11 | PostgreSQL Flexible Server | `psql-cloudplatform-dev` | Managed database (v16) |
-| 12 | PostgreSQL Database | `cloudplatform` | Application database |
-| 13 | PostgreSQL Firewall Rule | `AllowAzureServices` | Allows AKS → PostgreSQL traffic |
-| 14 | Monitor Action Group | `ag-cloudplatform-dev-critical` | Alert notification target |
-| 15 | CPU Metric Alert | `alert-cloudplatform-dev-high-cpu` | Fires when node CPU > 80% |
-| 16 | Memory Metric Alert | `alert-cloudplatform-dev-high-memory` | Fires when node memory > 80% |
+| 10 | Key Vault Secret | `db-host` | PostgreSQL FQDN |
+| 11 | Key Vault Secret | `db-user` | PostgreSQL admin username |
+| 12 | Key Vault Secret | `db-connection-string` | Full PostgreSQL connection URI |
+| 13 | PostgreSQL Flexible Server | `psql-cloudplatform-dev` | Managed database (v16) |
+| 14 | PostgreSQL Database | `cloudplatform` | Application database |
+| 15 | PostgreSQL Firewall Rule | `AllowAzureServices` | Allows AKS → PostgreSQL traffic |
+| 16 | Monitor Action Group | `ag-cloudplatform-dev-critical` | Alert notification target |
+| 17 | CPU Metric Alert | `alert-cloudplatform-dev-high-cpu` | Fires when node CPU > 80% |
+| 18 | Memory Metric Alert | `alert-cloudplatform-dev-high-memory` | Fires when node memory > 80% |
 
 ---
 

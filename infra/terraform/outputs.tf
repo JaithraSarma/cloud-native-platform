@@ -42,3 +42,7 @@ output "postgres_database" {
 output "log_analytics_workspace_id" {
   value = azurerm_log_analytics_workspace.main.id
 }
+
+output "tenant_id" {
+  value = data.azurerm_client_config.current.tenant_id
+}

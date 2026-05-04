@@ -44,6 +44,11 @@ patches:
         path: /spec/template/spec/containers/0/resources/requests/memory
         value: 32Mi
 
+  - path: secret-provider-patch.yaml
+    target:
+      kind: SecretProviderClass
+      name: azure-kv-secrets
+
 images:
   - name: ACR_LOGIN_SERVER/cloud-platform-api
     newName: acrcloudplatformdev.azurecr.io/cloud-platform-api

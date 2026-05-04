@@ -161,6 +161,22 @@ resource "azurerm_key_vault_secret" "db_connection_string" {
   depends_on = [azurerm_role_assignment.deployer_kv_admin]
 }
 
+resource "azurerm_key_vault_secret" "db_host" {
+  name         = "db-host"
+  value        = azurerm_postgresql_flexible_server.main.fqdn
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_role_assignment.deployer_kv_admin]
+}
+
+resource "azurerm_key_vault_secret" "db_user" {
+  name         = "db-user"
+  value        = var.db_admin_username
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_role_assignment.deployer_kv_admin]
+}
+
 # -----------------------------------------------------------------------
 # Azure Database for PostgreSQL Flexible Server (native managed database)
 # -----------------------------------------------------------------------
