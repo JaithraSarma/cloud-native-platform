@@ -29,6 +29,9 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
         value: 128Mi
+      - op: replace
+        path: /spec/template/spec/volumes/0/csi/volumeAttributes/secretProviderClass
+        value: dev-azure-kv-secrets
 
   - target:
       kind: Deployment

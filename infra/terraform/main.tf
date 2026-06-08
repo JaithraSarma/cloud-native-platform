@@ -6,7 +6,7 @@
 data "azurerm_client_config" "current" {}
 
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix = "cp-${var.environment}-6284"
   common_tags = merge(var.tags, {
     Environment = var.environment
   })
@@ -53,7 +53,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   dns_prefix          = "aks-${local.name_prefix}"
-  kubernetes_version  = "1.29"
   tags                = local.common_tags
 
   default_node_pool {
@@ -102,6 +101,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   azure_active_directory_role_based_access_control {
     azure_rbac_enabled = true
+    tenant_id          = data.azurerm_client_config.current.tenant_id
   }
 }
 
@@ -197,6 +197,10 @@ resource "azurerm_postgresql_flexible_server" "main" {
   geo_redundant_backup_enabled = var.environment == "prod"
 
   tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [zone]
+  }
 }
 
 resource "azurerm_postgresql_flexible_server_database" "app" {

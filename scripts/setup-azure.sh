@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH=$PATH:/usr/local/bin
 set -euo pipefail
 
 # ============================================================================
@@ -40,16 +41,20 @@ az aks get-credentials --resource-group "$RG_NAME" --name "$AKS_NAME" --overwrit
 echo "--- Building and pushing images ---"
 ACR_NAME=$(terraform output -raw acr_name)
 ACR_SERVER=$(terraform output -raw acr_login_server)
-az acr login --name "$ACR_NAME"
 
-cd ../..
-docker build -t "$ACR_SERVER/cloud-platform-api:${ENV}-latest" ./api
-docker build -t "$ACR_SERVER/cloud-platform-frontend:${ENV}-latest" ./frontend
-docker push "$ACR_SERVER/cloud-platform-api:${ENV}-latest"
-docker push "$ACR_SERVER/cloud-platform-frontend:${ENV}-latest"
+PROJECT_ROOT=$(pwd)/../..
+cd "$PROJECT_ROOT/api" && az acr build --registry "$ACR_NAME" --image "cloud-platform-api:${ENV}-latest" .
+cd "$PROJECT_ROOT/frontend" && az acr build --registry "$ACR_NAME" --image "cloud-platform-frontend:${ENV}-latest" .
 
 # Deploy with Kustomize
 echo "--- Deploying to AKS ---"
+cd "$PROJECT_ROOT"
+# Patch kustomization and secret provider with real values
+# Use the robust python script to handle noise and replacement
+cd "$PROJECT_ROOT/infra/terraform"
+terraform output -json | python3 ../../scripts/patch_manifests.py "${ENV}" "$PROJECT_ROOT"
+
+cd "$PROJECT_ROOT"
 kubectl apply -k "k8s/overlays/${ENV}"
 
 echo ""

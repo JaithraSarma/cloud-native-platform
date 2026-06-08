@@ -34,3 +34,11 @@ Thumbs.db
 # Test
 coverage/
 test-results.xml
+*.env
+*.pem
+*.key
+*.tfvars
+terraform.exe
+*.tfstate*
+.venv/
+venv/
