@@ -81,7 +81,7 @@ jobs:
         run: docker build -t cloud-platform-frontend:ci ./frontend
 
       - name: Scan API image (Trivy)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cloud-platform-api:ci
           severity: CRITICAL,HIGH
@@ -92,7 +92,7 @@ jobs:
           vuln-type: os,library
 
       - name: Scan Frontend image (Trivy)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cloud-platform-frontend:ci
           severity: CRITICAL,HIGH
