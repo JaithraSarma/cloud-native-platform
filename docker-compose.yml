@@ -6,7 +6,8 @@ services:
     environment:
       POSTGRES_DB: cloudplatform
       POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: apppassword
+      # Local-only default; override with DB_PASSWORD in your .env for anything beyond local dev.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-apppassword}
     ports:
       - "5432:5432"
     volumes:
@@ -32,7 +33,8 @@ services:
       DB_PORT: 5432
       DB_NAME: cloudplatform
       DB_USER: appuser
-      DB_PASSWORD: apppassword
+      # Local-only default; override with DB_PASSWORD in your .env for anything beyond local dev.
+      DB_PASSWORD: ${DB_PASSWORD:-apppassword}
       CORS_ORIGIN: "*"
     ports:
       - "3001:3001"
@@ -79,7 +81,8 @@ services:
     environment:
       # Local development only - not for production
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Local-only default; override with GF_SECURITY_ADMIN_PASSWORD in your .env for anything beyond local dev.
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
