@@ -55,8 +55,46 @@ services:
     networks:
       - app-network
 
+  # Prometheus (opt-in: docker compose --profile monitoring up)
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: cloudplatform-prometheus
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Grafana (opt-in: docker compose --profile monitoring up)
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: cloudplatform-grafana
+    profiles: ["monitoring"]
+    depends_on:
+      - prometheus
+    environment:
+      # Local development only - not for production
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - app-network
+
 volumes:
   pgdata:
+  prometheus_data:
+  grafana_data:
 
 networks:
   app-network:
