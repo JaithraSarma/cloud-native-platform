@@ -88,7 +88,18 @@ stages:
       - job: ContainerScan
         displayName: 'Scan Container Images'
         steps:
+          - task: Docker@2
+            displayName: 'Login to ACR'
+            inputs:
+              containerRegistry: 'acr-service-connection'
+              command: 'login'
           - script: |
-              echo "Running container security scan..."
-              echo "In production, integrate Microsoft Defender for Containers here"
-            displayName: 'Container Security Scan'
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              trivy --version
+            displayName: 'Install Trivy'
+          - script: |
+              trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 $(ACR_LOGIN_SERVER)/cloud-platform-api:$(TAG)
+            displayName: 'Scan API Image'
+          - script: |
+              trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 $(ACR_LOGIN_SERVER)/cloud-platform-frontend:$(TAG)
+            displayName: 'Scan Frontend Image'
