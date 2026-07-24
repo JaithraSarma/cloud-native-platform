@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build output
 dist/
@@ -37,7 +36,8 @@ test-results.xml
 *.env
 *.pem
 *.key
-*.tfvars
+terraform.tfvars
+*.auto.tfvars
 terraform.exe
 *.tfstate*
 .venv/
