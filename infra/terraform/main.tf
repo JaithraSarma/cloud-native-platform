@@ -56,15 +56,15 @@ resource "azurerm_kubernetes_cluster" "aks" {
   tags                = local.common_tags
 
   default_node_pool {
-    name                = "system"
-    node_count          = var.aks_node_count
-    vm_size             = var.aks_node_vm_size
-    os_disk_size_gb     = 50
+    name                 = "system"
+    node_count           = var.aks_node_count
+    vm_size              = var.aks_node_vm_size
+    os_disk_size_gb      = 50
     auto_scaling_enabled = true
-    min_count           = var.aks_node_count
-    max_count           = var.aks_max_node_count
-    max_pods            = 110
-    zones               = var.environment == "prod" ? [1, 2, 3] : []
+    min_count            = var.aks_node_count
+    max_count            = var.aks_max_node_count
+    max_pods             = 110
+    zones                = var.environment == "prod" ? [1, 2, 3] : []
 
     upgrade_settings {
       max_surge = "33%"
@@ -119,15 +119,15 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 # Azure Key Vault (native secrets management)
 # -----------------------------------------------------------------------
 resource "azurerm_key_vault" "main" {
-  name                        = "kv-${local.name_prefix}"
-  resource_group_name         = azurerm_resource_group.main.name
-  location                    = azurerm_resource_group.main.location
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "standard"
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = var.environment == "prod"
-  rbac_authorization_enabled  = true
-  tags                        = local.common_tags
+  name                       = "kv-${local.name_prefix}"
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = var.environment == "prod"
+  rbac_authorization_enabled = true
+  tags                       = local.common_tags
 }
 
 # Grant AKS managed identity access to Key Vault secrets
