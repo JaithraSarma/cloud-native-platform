@@ -25,28 +25,60 @@ Full step-by-step instructions and expected output are in [SETUP.md](SETUP.md).
 
 ## Architecture (Azure)
 
-```
-  Internet
-     │
-     ▼
-  Azure Load Balancer ──► AKS Web App Routing (managed NGINX ingress)
-                              │
-              ┌───────────────┴────────────────┐
-              │  /api /health /metrics          │  /
-              ▼                                  ▼
-        ┌───────────┐                     ┌────────────┐
-        │  API pod   │                     │ Frontend    │
-        │  Node 20   │                     │ React/Nginx │
-        │  Express   │                     │             │
-        └─────┬─────┘                     └────────────┘
-              │
-     ┌────────┴──────────┐        ┌──────────────────────────┐
-     │ Key Vault (CSI)   │        │ Azure PostgreSQL Flexible │
-     │ secrets as volume │        │ Server v16 (SSL only)     │
-     └───────────────────┘        └──────────────────────────┘
+```mermaid
+flowchart TB
+    user([Internet Users]):::ext
 
-  Images: Azure Container Registry (managed-identity pull)
-  Observability: Container Insights → Log Analytics + Monitor metric alerts
+    subgraph devloop["Delivery Pipeline"]
+        direction LR
+        dev([Developer]):::ext -->|git push / PR| repo[(GitHub Repo)]:::vcs
+        repo --> gha
+        subgraph gha["GitHub Actions CI"]
+            direction TB
+            j1[API: ESLint · Jest · npm audit]:::ci
+            j2[Frontend: ESLint · Vite build]:::ci
+            j3[Docker build · Trivy scan]:::ci
+            j4[hadolint · Terraform validate]:::ci
+        end
+    end
+
+    subgraph sub["Azure Subscription — Resource Group"]
+        lb[Azure Load Balancer]:::aznet
+        acr[(Azure Container Registry)]:::azreg
+
+        subgraph aks["Azure Kubernetes Service (AKS)"]
+            ing[Web App Routing<br/>managed NGINX ingress]:::aznet
+            subgraph workloads["Workloads · Kustomize overlays: dev / staging / prod"]
+                fe[Frontend Pod<br/>React 18 + Nginx]:::app
+                api[API Pod<br/>Node 20 + Express]:::app
+                csi[[Key Vault CSI driver<br/>secrets mounted as volume]]:::azsec
+            end
+        end
+
+        kv[Azure Key Vault<br/>RBAC mode · rotation]:::azsec
+        pg[(Azure PostgreSQL<br/>Flexible Server 16 · SSL only)]:::azdb
+        law[(Log Analytics<br/>Container Insights)]:::azobs
+        mon[Azure Monitor<br/>metric alerts]:::azobs
+    end
+
+    user --> lb --> ing
+    ing -->|/ | fe
+    ing -->|/api · /health · /metrics| api
+    api --> csi -. reads secrets .-> kv
+    api -->|TLS 5432| pg
+    gha -->|docker push| acr
+    acr -. managed-identity pull .-> workloads
+    aks -. logs + metrics .-> law --> mon
+
+    classDef ext fill:#455a64,stroke:#263238,color:#fff;
+    classDef vcs fill:#24292e,stroke:#000,color:#fff;
+    classDef ci fill:#2088ff,stroke:#0b4f9e,color:#fff;
+    classDef app fill:#00897b,stroke:#004d40,color:#fff;
+    classDef aznet fill:#0078d4,stroke:#004578,color:#fff;
+    classDef azreg fill:#5c2d91,stroke:#3b1a5e,color:#fff;
+    classDef azsec fill:#d83b01,stroke:#8a2600,color:#fff;
+    classDef azdb fill:#0063b1,stroke:#003b6b,color:#fff;
+    classDef azobs fill:#8661c5,stroke:#573f80,color:#fff;
 ```
 
 Locally the same three tiers run under Docker Compose on a bridge network, with Nginx
