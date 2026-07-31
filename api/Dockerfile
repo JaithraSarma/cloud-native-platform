@@ -1,10 +1,10 @@
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-FROM node:20-alpine
+FROM node:25-alpine
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodeuser -u 1001
