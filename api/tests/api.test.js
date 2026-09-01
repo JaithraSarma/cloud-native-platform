@@ -116,6 +116,15 @@ describe('API Endpoints', () => {
     });
   });
 
+  describe('GET /openapi.yaml', () => {
+    it('should return the OpenAPI contract', async () => {
+      const res = await request(app).get('/openapi.yaml');
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('openapi:');
+      expect(res.text).toContain('Cloud Platform API');
+    });
+  });
+
   describe('404 handler', () => {
     it('should return 404 for unknown routes', async () => {
       const res = await request(app).get('/unknown');

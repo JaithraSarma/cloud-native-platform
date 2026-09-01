@@ -1,0 +1,90 @@
+# Publishes versioned container images to GitHub Container Registry (GHCR).
+#
+# Why GHCR: it authenticates with the built-in GITHUB_TOKEN, so no cloud
+# credentials or long-lived secrets need to be provisioned for this repo.
+# ci.yml already builds+lints+tests+scans on every push/PR; this workflow
+# is the missing piece that actually publishes the images it discards,
+# so tagged commits and main become pullable, versioned artifacts.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+# Cancel superseded runs for the same ref (e.g. rapid pushes to main) so we
+# don't waste minutes building/publishing images that are immediately stale.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read the repo, write packages to GHCR. No id-token/
+# attestations permissions are needed because we rely on build-push-action's
+# built-in provenance/sbom generation rather than the separate
+# actions/attest-build-provenance action.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and publish (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Both images publish from one job definition; matrix entries only
+      # differ in build context and image name.
+      matrix:
+        include:
+          - context: ./api
+            image: cloud-platform-api
+          - context: ./frontend
+            image: cloud-platform-frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action derives tags/labels from the trigger:
+      #   - push to main:      "edge" + "latest" + sha-<short>
+      #   - push of vX.Y.Z tag: semver "X.Y.Z" + "X.Y" tags
+      # Note: github.repository_owner is "JaithraSarma" (mixed case); GHCR
+      # requires lowercase image names, and metadata-action lowercases the
+      # `images` value automatically — no manual downcasing needed here.
+      - name: Derive image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=sha
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # provenance + sbom: natively supported by build-push-action, giving
+      # supply-chain attestations (build provenance, SBOM) without needing
+      # the separate attest-build-provenance action or extra permissions.
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

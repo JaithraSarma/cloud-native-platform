@@ -89,7 +89,7 @@ proxying `/api` and `/health` to the API container.
 | Layer | Technology |
 |---|---|
 | Frontend | React 18, Vite 5, Tailwind CSS 3, served by non-root Nginx 1.27 (`nginx-unprivileged`) |
-| API | Node.js 20, Express 4, pino structured logging, graceful shutdown |
+| API | Node.js 20, Express 4, pino structured logging, graceful shutdown, OpenAPI 3.0 contract at `/openapi.yaml` |
 | Database | PostgreSQL 16 |
 | Containers | Docker multi-stage builds, non-root, HEALTHCHECK |
 | Orchestration | Kubernetes (AKS 1.29) with Kustomize overlays |

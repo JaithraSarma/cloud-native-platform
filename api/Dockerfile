@@ -14,6 +14,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY src/ ./src/
 COPY package.json ./
+COPY openapi.yaml ./
 
 USER nodeuser
 

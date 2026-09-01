@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -12,6 +14,9 @@ const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Load the OpenAPI spec once at startup so requests just serve the cached text
+const openApiSpec = fs.readFileSync(path.join(__dirname, '..', 'openapi.yaml'), 'utf8');
 
 // Collect default Prometheus metrics
 collectDefaultMetrics();
@@ -57,6 +62,12 @@ app.get('/metrics', async (req, res) => {
   res.end(await register.metrics());
 });
 
+// OpenAPI contract
+app.get('/openapi.yaml', (req, res) => {
+  res.set('Content-Type', 'application/yaml');
+  res.send(openApiSpec);
+});
+
 // Root
 app.get('/', (req, res) => {
   res.json({
@@ -68,7 +79,8 @@ app.get('/', (req, res) => {
       readiness: '/health/ready',
       liveness: '/health/live',
       metrics: '/metrics',
-      products: '/api/products'
+      products: '/api/products',
+      openapi: '/openapi.yaml'
     }
   });
 });

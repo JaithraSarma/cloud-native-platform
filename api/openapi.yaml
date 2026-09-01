@@ -1,0 +1,445 @@
+openapi: 3.0.3
+info:
+  title: Cloud Platform API
+  version: 1.0.0
+  description: >
+    REST API for the Cloud-Native Deployment Platform. Serves product catalog
+    CRUD operations, health/liveness/readiness probes, and Prometheus metrics.
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+paths:
+  /:
+    get:
+      summary: Service info
+      operationId: getServiceInfo
+      tags: [Meta]
+      responses:
+        '200':
+          description: Service metadata and endpoint index
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: cloud-platform-api
+                  version:
+                    type: string
+                    example: 1.0.0
+                  status:
+                    type: string
+                    example: running
+                  endpoints:
+                    type: object
+                    properties:
+                      health:
+                        type: string
+                      readiness:
+                        type: string
+                      liveness:
+                        type: string
+                      metrics:
+                        type: string
+                      products:
+                        type: string
+                      openapi:
+                        type: string
+
+  /openapi.yaml:
+    get:
+      summary: OpenAPI contract for this API
+      operationId: getOpenApiSpec
+      tags: [Meta]
+      responses:
+        '200':
+          description: Raw OpenAPI YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /health:
+    get:
+      summary: Basic health check
+      operationId: getHealth
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is healthy and connected to the database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Service is degraded (database unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /health/live:
+    get:
+      summary: Liveness probe
+      operationId: getLiveness
+      tags: [Health]
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      operationId: getReadiness
+      tags: [Health]
+      responses:
+        '200':
+          description: Service can serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+        '503':
+          description: Service cannot serve traffic (database unavailable)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: not ready
+                  reason:
+                    type: string
+                    example: database unavailable
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: getMetrics
+      tags: [Metrics]
+      responses:
+        '200':
+          description: Metrics in Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/products:
+    get:
+      summary: List products
+      operationId: listProducts
+      tags: [Products]
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact-match filter on product category
+        - name: in_stock
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+          description: Filter by stock status
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, price, created_at]
+          description: Sort column. Defaults to created_at descending when omitted or invalid.
+      responses:
+        '200':
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      summary: Create a product
+      operationId: createProduct
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Product ID
+    get:
+      summary: Get a product by ID
+      operationId: getProduct
+      tags: [Products]
+      responses:
+        '200':
+          description: Product found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      summary: Update a product
+      operationId: updateProduct
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      summary: Delete a product
+      operationId: deleteProduct
+      tags: [Products]
+      responses:
+        '200':
+          description: Product deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Product deleted
+                  product:
+                    $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Kubernetes Cluster License
+        description:
+          type: string
+          nullable: true
+          example: Enterprise K8s cluster management license
+        price:
+          type: string
+          description: Decimal price returned as a string by the PostgreSQL driver
+          example: '2999.99'
+        category:
+          type: string
+          nullable: true
+          example: Infrastructure
+        in_stock:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - price
+        - in_stock
+
+    ProductInput:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: CI/CD Pipeline Setup
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        price:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 999999.99
+          example: 499.99
+        category:
+          type: string
+          maxLength: 100
+          nullable: true
+        in_stock:
+          type: boolean
+      required:
+        - name
+        - price
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+          example: cloud-platform-api
+        version:
+          type: string
+          example: 1.0.0
+        uptime:
+          type: number
+        database:
+          type: string
+          example: connected
+        hostname:
+          type: string
+        memory:
+          type: object
+          properties:
+            used:
+              type: string
+              example: 42MB
+            total:
+              type: string
+              example: 64MB
+
+    ValidationErrorItem:
+      type: object
+      description: Shape produced by express-validator's errors.array()
+      properties:
+        type:
+          type: string
+          example: field
+        msg:
+          type: string
+          example: Invalid value
+        path:
+          type: string
+          example: name
+        location:
+          type: string
+          example: body
+
+  responses:
+    ValidationError:
+      description: Request failed input validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              errors:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ValidationErrorItem'
+    NotFound:
+      description: Product not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Product not found
+    ServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Failed to fetch products
+    RateLimited:
+      description: Too many requests to /api/*
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Too many requests, please try again later.
