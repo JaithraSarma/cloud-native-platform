@@ -1,0 +1,96 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cloud-platform-aws
+
+namePrefix: aws-
+
+resources:
+  - ../base
+
+patches:
+  - target:
+      kind: Ingress
+      name: cloud-platform-ingress
+    patch: |
+      - op: remove
+        path: /metadata/annotations/kubernetes.io~1ingress.class
+      - op: replace
+        path: /spec/ingressClassName
+        value: alb
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1scheme
+        value: internet-facing
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1target-type
+        value: ip
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1healthcheck-path
+        value: /health
+
+  - target:
+      kind: SecretProviderClass
+      name: azure-kv-secrets
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: secretsmanager-secrets
+      - op: replace
+        path: /spec
+        value:
+          provider: aws
+          parameters:
+            region: <AWS_REGION>
+            objects: |
+              - objectName: "<SECRET_PREFIX>/db-host"
+                objectType: "secretsmanager"
+                objectAlias: "db-host"
+              - objectName: "<SECRET_PREFIX>/db-user"
+                objectType: "secretsmanager"
+                objectAlias: "db-user"
+              - objectName: "<SECRET_PREFIX>/db-password"
+                objectType: "secretsmanager"
+                objectAlias: "db-password"
+              - objectName: "<SECRET_PREFIX>/db-connection-string"
+                objectType: "secretsmanager"
+                objectAlias: "db-connection-string"
+          secretObjects:
+            - secretName: db-credentials
+              type: Opaque
+              data:
+                - objectName: db-host
+                  key: db-host
+                - objectName: db-user
+                  key: db-user
+                - objectName: db-password
+                  key: db-password
+                - objectName: db-connection-string
+                  key: db-connection-string
+
+  - target:
+      kind: ServiceAccount
+      name: cloud-platform
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: "<AWS_IRSA_ROLE_ARN_PLACEHOLDER>"
+
+  - target:
+      kind: Deployment
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes/0/csi/volumeAttributes/secretProviderClass
+        value: aws-secretsmanager-secrets
+
+images:
+  - name: ACR_LOGIN_SERVER/cloud-platform-api
+    newName: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/cloud-platform-api
+    newTag: latest
+  - name: ACR_LOGIN_SERVER/cloud-platform-frontend
+    newName: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/cloud-platform-frontend
+    newTag: latest
+
+commonLabels:
+  environment: aws

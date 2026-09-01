@@ -173,7 +173,7 @@ by `Database pool closed`. Logs are structured JSON (pino) with a per-request id
    # {"database":"ok","version":"11.2.0"}
    ```
 
-4. Open the pre-provisioned dashboard: **Dashboards → Cloud Platform → Cloud Platform API —
+4. Open the pre-provisioned dashboard: **Dashboards → Cloud Platform → Cloud Platform API
    Runtime**. Panels cover process CPU, resident memory, Node heap used vs total,
    event-loop lag, active handles, and API up/down.
 
@@ -263,8 +263,36 @@ Autoscaler and a Pod Disruption Budget.
 
 ```bash
 ./scripts/teardown.sh dev
-# confirm when prompted — this destroys all Azure resources for the environment
+# confirm when prompted, this destroys all Azure resources for the environment
 ```
+
+### D.6 AWS variant (infrastructure as code)
+
+Azure is the fully built and verified target above. The repository also carries a complete
+AWS implementation of the same architecture, written in Terraform and Kustomize but not
+applied to a live account here (it needs AWS credentials you provide). It is validated in
+CI on every push.
+
+```bash
+cd infra/terraform/aws
+terraform init -backend=false
+terraform validate          # Success! The configuration is valid.
+terraform fmt -check
+
+# with real AWS credentials and a terraform.tfvars, you would then run:
+# terraform init && terraform plan && terraform apply
+```
+
+The AWS stack provisions a VPC, EKS cluster and node group (OIDC enabled for IRSA), ECR
+repositories, an encrypted private RDS PostgreSQL instance, Secrets Manager secrets, the
+IAM role and policy for IRSA, and CloudWatch logging and alarms. The matching Kubernetes
+overlay is `k8s/aws` (ALB ingress, AWS Secrets Store CSI, IRSA-annotated ServiceAccount):
+
+```bash
+kubectl apply -k k8s/aws     # after filling the region, account, role ARN, and secret prefix placeholders
+```
+
+See [theory.md](theory.md) for the full Azure, AWS, and GCP mapping.
 
 ---
 
@@ -289,7 +317,7 @@ assignment exists: `az role assignment list --scope <acr-id> -o table`.
 
 **Grafana shows no data.**
 Confirm the Prometheus target is `up` (Section C.2) and that the application stack is
-running — the monitoring profile scrapes `api:3001`, which must be on the same Compose
+running, the monitoring profile scrapes `api:3001`, which must be on the same Compose
 network.
 
 ---

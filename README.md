@@ -2,7 +2,10 @@
 
 A three-tier web application (React frontend, Node.js API, PostgreSQL) packaged with the
 full deployment toolchain used to ship it: Docker, Kubernetes (Kustomize), Terraform for
-Azure, and CI that builds, tests, and image-scans on every push.
+Azure and AWS, and CI that builds, tests, scans, validates, and publishes on every push.
+
+For a complete walkthrough of the architecture and the reasoning behind each decision, see
+the study booklet in [theory.md](theory.md).
 
 [![CI](https://github.com/JaithraSarma/cloud-native-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/JaithraSarma/cloud-native-platform/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -11,15 +14,20 @@ Azure, and CI that builds, tests, and image-scans on every push.
 
 ## What this is
 
-The application is deliberately small — a products CRUD service — because the subject of
+The application is deliberately small, a products CRUD service, because the subject of
 the project is the platform around it, not the business logic. It demonstrates a working
-path from source code to a running Azure Kubernetes Service cluster:
+path from source code to a running, observable, secured workload on managed Kubernetes:
 
 - Local development with Docker Compose, plus an optional Prometheus + Grafana stack.
 - Container images built as multi-stage, non-root, health-checked builds.
-- Kubernetes manifests managed with Kustomize across dev, staging, and prod overlays.
-- Azure infrastructure defined in Terraform (AKS, ACR, Key Vault, PostgreSQL, Monitor).
-- CI in GitHub Actions: lint, test, image build, Trivy scan, Terraform validation.
+- Kubernetes manifests managed with Kustomize across dev, staging, and prod overlays,
+  plus an AWS overlay showing the cloud-specific edges.
+- Infrastructure defined in Terraform: Azure (built and verified) and AWS (IaC-complete).
+- CI in GitHub Actions: lint, test, image and IaC scan, manifest validation, and a release
+  workflow that publishes signed images with an SBOM to GHCR.
+
+Azure is the fully built and verified target. AWS is implemented in Terraform and Kubernetes
+to the same shape. GCP is covered as an equivalence mapping in [theory.md](theory.md).
 
 Full step-by-step instructions and expected output are in [SETUP.md](SETUP.md).
 
@@ -42,7 +50,7 @@ flowchart TB
         end
     end
 
-    subgraph sub["Azure Subscription — Resource Group"]
+    subgraph sub["Azure Subscription: Resource Group"]
         lb[Azure Load Balancer]:::aznet
         acr[(Azure Container Registry)]:::azreg
 
@@ -93,7 +101,7 @@ proxying `/api` and `/health` to the API container.
 | Database | PostgreSQL 16 |
 | Containers | Docker multi-stage builds, non-root, HEALTHCHECK |
 | Orchestration | Kubernetes (AKS 1.29) with Kustomize overlays |
-| Infrastructure | Terraform (`azurerm` provider) |
+| Infrastructure | Terraform (`azurerm` for Azure, `aws` for AWS) |
 | CI/CD | GitHub Actions (primary) + Azure DevOps Pipelines (example) |
 | Security scanning | Trivy (image), hadolint (Dockerfile), npm audit |
 | Metrics | prom-client `/metrics`, Prometheus, Grafana |
@@ -134,7 +142,7 @@ docker compose --profile monitoring up -d
 | Prometheus | http://localhost:9090 | Scrapes `api:3001/metrics` every 15s |
 | Grafana | http://localhost:3000 | Login `admin` / `admin` (local only) |
 
-Grafana loads the "Cloud Platform API — Runtime" dashboard automatically (CPU, memory,
+Grafana loads the "Cloud Platform API Runtime" dashboard automatically (CPU, memory,
 Node heap, event-loop lag, and up/down).
 
 ## CI/CD
@@ -143,8 +151,8 @@ Node heap, event-loop lag, and up/down).
 
 | Job | What it does |
 |---|---|
-| `api-tests` | `npm ci`, ESLint, Jest (12 tests), `npm audit` |
-| `frontend-build` | `npm ci`, ESLint, Vite build |
+| `api-tests` | `npm ci`, ESLint, Jest (13 tests), `npm audit` |
+| `frontend-build` | `npm ci`, ESLint, Vitest, Vite build |
 | `docker-and-scan` | Builds both images, Trivy scan reporting CRITICAL/HIGH (unfixed ignored) |
 | `hadolint` | Lints both Dockerfiles |
 | `terraform-checks` | `terraform fmt -check`, `init -backend=false`, `validate` |
@@ -152,7 +160,9 @@ Node heap, event-loop lag, and up/down).
 | `iac-scan` | Checkov scan of the Terraform (report-only, same rationale as Trivy) |
 
 Runs are gated by a `concurrency` group so a new push cancels the superseded run on the
-same ref.
+same ref. A separate `release.yml` workflow builds both images and publishes them to GitHub
+Container Registry on pushes to `main` and on `v*.*.*` tags, each with an SBOM and build
+provenance attestation, authenticating with the built-in `GITHUB_TOKEN`.
 
 Dependabot (`.github/dependabot.yml`) opens weekly update PRs for npm, Docker, GitHub
 Actions, and Terraform. The `pipelines/` directory holds an equivalent Azure DevOps
@@ -170,17 +180,20 @@ cloud-native-platform/
 ├── frontend/                 # React/Vite dashboard
 │   ├── src/                  # App.jsx, main.jsx, index.css
 │   ├── nginx.conf            # SPA + /api reverse proxy
-│   └── Dockerfile            # build → nginx:alpine
+│   └── Dockerfile            # build, non-root nginx-unprivileged
 ├── k8s/
 │   ├── base/                 # namespace, deployments, services, ingress, secret provider,
 │   │                         #   service account, network policies
-│   └── overlays/             # dev (1 replica), staging (2), prod (3 + HPA + PDB)
-├── infra/terraform/          # AKS, ACR, Key Vault, PostgreSQL, Monitor
-│   └── environments/         # dev/staging/prod .tfvars
+│   ├── overlays/             # dev (1 replica), staging (2), prod (3 + HPA + PDB)
+│   └── aws/                  # AWS overlay (ALB ingress, Secrets Manager CSI, IRSA)
+├── infra/terraform/          # Azure: AKS, ACR, Key Vault, PostgreSQL, Monitor
+│   ├── environments/         # dev/staging/prod .tfvars
+│   └── aws/                  # AWS: EKS, ECR, RDS, Secrets Manager, IRSA, CloudWatch
 ├── pipelines/                # Azure DevOps CI/CD/infra pipelines (example)
 ├── monitoring/               # Prometheus config + Grafana provisioning/dashboards
 ├── scripts/                  # setup-azure.sh, teardown.sh, local-dev.sh
-├── .github/workflows/ci.yml  # GitHub Actions CI
+├── .github/workflows/        # ci.yml (validate) + release.yml (publish to GHCR)
+├── theory.md                 # study booklet (architecture, decisions, cross-cloud)
 ├── docker-compose.yml        # db + api + frontend, plus monitoring profile
 ├── Makefile                  # common tasks (make help)
 ├── README.md

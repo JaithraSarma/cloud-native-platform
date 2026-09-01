@@ -129,9 +129,13 @@ jobs:
   terraform-checks:
     name: Terraform Checks
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [infra/terraform, infra/terraform/aws]
     defaults:
       run:
-        working-directory: infra/terraform
+        working-directory: ${{ matrix.dir }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,7 +144,15 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform fmt
-        run: terraform fmt -check -recursive
+        # infra/terraform/aws is a nested directory, so a recursive fmt check
+        # from infra/terraform would also walk it and double-count its files.
+        # Run non-recursive at the root and recursive only inside the aws dir.
+        run: |
+          if [ "${{ matrix.dir }}" = "infra/terraform" ]; then
+            terraform fmt -check
+          else
+            terraform fmt -check -recursive
+          fi
 
       - name: Terraform init (no backend)
         run: terraform init -backend=false
@@ -173,6 +185,12 @@ jobs:
             kustomize build "k8s/overlays/$env" | kubeconform -strict -summary -ignore-missing-schemas
           done
 
+      - name: Validate AWS overlay
+        run: |
+          set -e
+          echo "== Validating overlay: k8s/aws =="
+          kustomize build "k8s/aws" | kubeconform -strict -summary -ignore-missing-schemas
+
   iac-scan:
     name: Terraform Security Scan (Checkov)
     runs-on: ubuntu-latest
@@ -192,4 +210,6 @@ jobs:
         run: |
           # IaC baseline findings are informative for a portfolio project, not a hard
           # gate, consistent with the report-only Trivy image scan above.
+          # Scanning the infra/terraform parent recurses into infra/terraform/aws,
+          # so both the Azure and AWS configs are covered by this single scan.
           checkov -d infra/terraform --compact --soft-fail
