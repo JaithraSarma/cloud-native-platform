@@ -1,12 +1,14 @@
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const morgan = require('morgan');
+const pinoHttp = require('pino-http');
 const rateLimit = require('express-rate-limit');
 const { register, collectDefaultMetrics } = require('prom-client');
 const productRoutes = require('./routes/products');
 const healthRoutes = require('./routes/health');
 const db = require('./db');
+const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,7 +36,16 @@ app.use('/api/', limiter);
 
 // Request parsing & logging
 app.use(express.json({ limit: '10kb' }));
-app.use(morgan('combined'));
+app.use(pinoHttp({
+  logger,
+  genReqId: (req, res) => {
+    const existingId = req.id ?? req.headers['x-request-id'];
+    if (existingId) return existingId;
+    const id = crypto.randomUUID();
+    res.setHeader('X-Request-Id', id);
+    return id;
+  }
+}));
 
 // Routes
 app.use('/api/products', productRoutes);
@@ -69,7 +80,7 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
+  logger.error({ err }, 'Unhandled error');
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -77,18 +88,54 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await db.initialize();
-    console.log('Database initialized successfully');
+    logger.info('Database initialized successfully');
 
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`API server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`API server running on port ${PORT}`);
+      logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
+
+    let shuttingDown = false;
+    const shutdown = (signal) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+
+      logger.info(`${signal} received, shutting down gracefully`);
+
+      const shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10);
+      const forceExitTimer = setTimeout(() => {
+        logger.error('Graceful shutdown timed out, forcing exit');
+        process.exit(1);
+      }, shutdownTimeoutMs);
+      forceExitTimer.unref();
+
+      server.close(async (err) => {
+        if (err) {
+          logger.error({ err }, 'Error while closing HTTP server');
+        }
+        try {
+          await db.pool.end();
+          logger.info('Database pool closed');
+          clearTimeout(forceExitTimer);
+          process.exit(0);
+        } catch (closeErr) {
+          logger.error({ err: closeErr }, 'Error while closing database pool');
+          clearTimeout(forceExitTimer);
+          process.exit(1);
+        }
+      });
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (err) {
-    console.error('Failed to start server:', err.message);
+    logger.error({ err }, 'Failed to start server');
     process.exit(1);
   }
 }
 
-start();
+if (process.env.NODE_ENV !== 'test') {
+  start();
+}
 
 module.exports = app;

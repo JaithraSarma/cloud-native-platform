@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -62,6 +66,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
@@ -140,3 +147,49 @@ jobs:
 
       - name: Terraform validate
         run: terraform validate
+
+  k8s-validate:
+    name: Kubernetes Manifest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.4.3
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
+
+      - name: Validate overlays (dev, staging, prod)
+        run: |
+          set -e
+          for env in dev staging prod; do
+            echo "== Validating overlay: $env =="
+            kustomize build "k8s/overlays/$env" | kubeconform -strict -summary -ignore-missing-schemas
+          done
+
+  iac-scan:
+    name: Terraform Security Scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov (report-only)
+        run: |
+          # IaC baseline findings are informative for a portfolio project, not a hard
+          # gate, consistent with the report-only Trivy image scan above.
+          checkov -d infra/terraform --compact --soft-fail

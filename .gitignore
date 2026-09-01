@@ -42,3 +42,6 @@ terraform.exe
 *.tfstate*
 .venv/
 venv/
+
+# local subagent-driven progress ledger (scratch)
+.superpowers/

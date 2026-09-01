@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const logger = require('./logger');
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -12,7 +13,7 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected database pool error:', err.message);
+  logger.error({ err }, 'Unexpected database pool error');
 });
 
 async function initialize() {
@@ -45,7 +46,7 @@ async function initialize() {
         ('Load Balancer Pro', 'Advanced L7 load balancing with WAF', 599.99, 'Networking', true),
         ('Disaster Recovery Plan', 'Multi-region DR setup and configuration', 1499.99, 'Infrastructure', false)
       `);
-      console.log('Database seeded with initial products');
+      logger.info('Database seeded with initial products');
     }
   } finally {
     client.release();
@@ -57,20 +58,17 @@ async function query(text, params) {
   const result = await pool.query(text, params);
   const duration = Date.now() - start;
   if (duration > 1000) {
-    console.warn(`Slow query (${duration}ms):`, text);
+    logger.warn({ duration, text }, 'Slow query');
   }
   return result;
 }
 
 async function healthCheck() {
-  const client = await pool.connect();
   try {
-    await client.query('SELECT 1');
+    await pool.query('SELECT 1');
     return true;
   } catch {
     return false;
-  } finally {
-    client.release();
   }
 }
 

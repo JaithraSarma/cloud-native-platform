@@ -50,8 +50,11 @@ cp .env.example .env
    NAME                     SERVICE    STATUS                 PORTS
    cloudplatform-db         db         Up (healthy)           0.0.0.0:5432->5432/tcp
    cloudplatform-api        api        Up (healthy)           0.0.0.0:3001->3001/tcp
-   cloudplatform-frontend   frontend   Up (healthy)           0.0.0.0:8080->80/tcp
+   cloudplatform-frontend   frontend   Up (healthy)           0.0.0.0:8080->8080/tcp
    ```
+
+   The frontend serves from a non-root Nginx (the `nginx-unprivileged` image, uid 101),
+   which listens on 8080 inside the container. The host port stays 8080.
 
 3. Check the API health endpoint:
 
@@ -127,8 +130,13 @@ Time:        ~7 s
 ```
 
 Coverage is printed with the results (around 72% of lines). `npm run lint` runs ESLint over
-`src/`. The frontend has `npm run lint` and `npm run build`. `make test` and `make lint`
-run these for you.
+`src/`. The frontend has `npm run lint`, `npm test` (a Vitest render test), and `npm run
+build`. `make test` and `make lint` run these for you.
+
+On shutdown the API handles `SIGTERM`: it stops accepting connections, drains the
+PostgreSQL pool, and exits. You can see this locally with `docker compose stop api` and
+`docker compose logs api`, which logs `SIGTERM received, shutting down gracefully` followed
+by `Database pool closed`. Logs are structured JSON (pino) with a per-request id.
 
 ---
 

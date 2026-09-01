@@ -3,12 +3,14 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - serviceaccount.yaml
   - api-deployment.yaml
   - api-service.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
   - ingress.yaml
   - secret-provider.yaml
+  - networkpolicy.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: cloud-platform

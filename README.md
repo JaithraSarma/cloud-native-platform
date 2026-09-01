@@ -88,8 +88,8 @@ proxying `/api` and `/health` to the API container.
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite 5, Tailwind CSS 3, served by Nginx 1.25 |
-| API | Node.js 20, Express 4 |
+| Frontend | React 18, Vite 5, Tailwind CSS 3, served by non-root Nginx 1.27 (`nginx-unprivileged`) |
+| API | Node.js 20, Express 4, pino structured logging, graceful shutdown |
 | Database | PostgreSQL 16 |
 | Containers | Docker multi-stage builds, non-root, HEALTHCHECK |
 | Orchestration | Kubernetes (AKS 1.29) with Kustomize overlays |
@@ -148,6 +148,11 @@ Node heap, event-loop lag, and up/down).
 | `docker-and-scan` | Builds both images, Trivy scan reporting CRITICAL/HIGH (unfixed ignored) |
 | `hadolint` | Lints both Dockerfiles |
 | `terraform-checks` | `terraform fmt -check`, `init -backend=false`, `validate` |
+| `k8s-validate` | `kustomize build` each overlay, validated with kubeconform (fails on invalid manifests) |
+| `iac-scan` | Checkov scan of the Terraform (report-only, same rationale as Trivy) |
+
+Runs are gated by a `concurrency` group so a new push cancels the superseded run on the
+same ref.
 
 Dependabot (`.github/dependabot.yml`) opens weekly update PRs for npm, Docker, GitHub
 Actions, and Terraform. The `pipelines/` directory holds an equivalent Azure DevOps
@@ -167,7 +172,8 @@ cloud-native-platform/
 │   ├── nginx.conf            # SPA + /api reverse proxy
 │   └── Dockerfile            # build → nginx:alpine
 ├── k8s/
-│   ├── base/                 # namespace, deployments, services, ingress, secret provider
+│   ├── base/                 # namespace, deployments, services, ingress, secret provider,
+│   │                         #   service account, network policies
 │   └── overlays/             # dev (1 replica), staging (2), prod (3 + HPA + PDB)
 ├── infra/terraform/          # AKS, ACR, Key Vault, PostgreSQL, Monitor
 │   └── environments/         # dev/staging/prod .tfvars
@@ -184,10 +190,18 @@ cloud-native-platform/
 ## Security
 
 - API: Helmet headers, per-IP rate limiting, express-validator input validation,
-  parameterized SQL (no string interpolation), 10 kb JSON body limit.
-- Containers: non-root user, pinned Alpine base images, HEALTHCHECK, Trivy scanned in CI.
+  parameterized SQL (no string interpolation), 10 kb JSON body limit. Structured JSON
+  logs with a per-request id, and a `SIGTERM` handler that drains connections before exit.
+- Containers: non-root user (the frontend uses the `nginx-unprivileged` image), pinned
+  Alpine base images, HEALTHCHECK, Trivy scanned in CI.
+- Kubernetes: pod and container `securityContext` (`runAsNonRoot`, read-only root
+  filesystem, all capabilities dropped, `seccompProfile: RuntimeDefault`), a dedicated
+  ServiceAccount with the token unmounted, and a default-deny NetworkPolicy with explicit
+  allows for the traffic the app needs.
 - Azure: secrets in Key Vault mounted via the CSI driver (never in code or env files),
   RBAC-mode Key Vault, managed-identity ACR pull, SSL-only PostgreSQL.
+
+See [SECURITY.md](SECURITY.md) for the full policy and how to report an issue.
 
 ## License
 

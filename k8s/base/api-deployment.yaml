@@ -19,9 +19,31 @@ spec:
       labels:
         app: api
     spec:
+      serviceAccountName: cloud-platform
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: api
           image: ACR_LOGIN_SERVER/cloud-platform-api:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: ["ALL"]
+          lifecycle:
+            preStop:
+              exec:
+                # Give the load balancer time to deregister this pod before the process exits
+                command: ["/bin/sh", "-c", "sleep 5"]
           ports:
             - containerPort: 3001
           env:
@@ -78,6 +100,8 @@ spec:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
               readOnly: true
+            - name: tmp
+              mountPath: "/tmp"
       volumes:
         - name: secrets-store-inline
           csi:
@@ -85,3 +109,5 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: "azure-kv-secrets"
+        - name: tmp
+          emptyDir: {}

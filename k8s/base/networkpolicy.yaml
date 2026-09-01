@@ -1,0 +1,92 @@
+# AKS enables Azure network policy (network_policy = azure) but ships no
+# policies of its own, so the namespace is fully open by default. These
+# policies lock it down to a default-deny-ingress posture with narrow,
+# explicit allows for the traffic the app actually needs.
+#
+# Namespace is intentionally omitted on all four resources below: Kustomize's
+# namespace transformer (set via `namespace:` in each overlay's
+# kustomization.yaml) stamps the correct per-environment namespace onto them.
+---
+# 1. Default-deny all ingress in the namespace. Anything not explicitly
+#    allowed below is blocked.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# 2. Allow ingress to the frontend (port 8080) from the ingress controller.
+#    AKS's managed "Web App Routing" add-on (webapprouting.kubernetes.azure.com,
+#    see base/ingress.yaml) runs its controller pods in the app-routing-system
+#    namespace. This is the pragmatic default for that add-on; if a different
+#    ingress controller is used, update the namespaceSelector accordingly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller-to-frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: app-routing-system
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 3. Allow ingress to the api (port 3001) only from the frontend pods
+#    (frontend proxies /api, /health, /metrics requests to the api Service).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-api
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+# 4. Scope the api's egress: DNS resolution (kube-dns/CoreDNS, udp+tcp/53) and
+#    PostgreSQL (tcp/5432). PostgreSQL runs as an external Azure Database
+#    service outside the cluster, so its destination can't be scoped by
+#    podSelector/namespaceSelector - egress is left open to any destination
+#    on 5432 only. Selecting the api pods for Egress here also means any
+#    egress not listed below is denied for those pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress-dns-and-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - ports:
+        - protocol: TCP
+          port: 5432
